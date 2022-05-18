@@ -4,7 +4,6 @@ import {AppService} from './app.service';
 import {TemperaturaModule} from "./temperatura/temperatura.module";
 import {ConfigModule} from '@nestjs/config';
 import {SequelizeModule} from "@nestjs/sequelize";
-import {Temperatura} from "./temperatura/temperatura.entity";
 
 @Module({
     imports: [
@@ -18,6 +17,7 @@ import {Temperatura} from "./temperatura/temperatura.entity";
             database: process.env.DB_NAME,
             autoLoadModels: true,
             synchronize: true,
+            timezone: '-03:00',
         }),
         TemperaturaModule
     ],

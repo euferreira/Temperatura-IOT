@@ -1,186 +1,191 @@
-#include <DHT.h>
-#include <Ethernet.h>
+#include <ArduinoJson.h>
 #include <SPI.h>
+#include <TM1637Display.h>
+#include <DHT.h>
+#include <LiquidCrystal_I2C.h>
+#include <Ethernet.h>
 
-#define DHTPIN A1 //pino que está conectado
-#define DHTTYPE DHT11 //modulo de conexão
-#define LED_VERMELHO 8
-#define LED_AMARELO 9
-#define LED_AZUL 5
-#define LED_VERDE 2
-#define LED_BRANCO 3
+#define LED_RED 4
+#define LED_BLUE 5
+#define CLK 2
+#define DIO 3
+#define DHTTYPE DHT11
+#define DHTPIN A1
 
-//Sensor de temperatura
+TM1637Display display = TM1637Display(CLK, DIO);
+LiquidCrystal_I2C lcd(0x27, 16, 2);
 DHT dht(DHTPIN, DHTTYPE);
-float temperatura, umidade;
+IPAddress serverIp(192, 168, 0, 10); // ip do servidor
 
-//ethernet
-byte mac[] = {0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x02}; //mac da shield ethernet
-byte ip[] = { 192, 168, 0, 18 }; //ip do shield
-int baudRate = 9600;
-IPAddress serverIp(192, 168, 0, 20); //ip do servidor
+uint8_t data[] = {0xff, 0xff, 0xff, 0xff};
+uint8_t blank[] = {0x00, 0x00, 0x00, 0x00};
+const uint8_t celsius[] = {
+  SEG_A | SEG_B | SEG_F | SEG_G, // Circle
+  SEG_A | SEG_D | SEG_E | SEG_F  // C
+};
 int serverPort = 3000;
 EthernetClient client;
+float temperatura;
+float umidade;
 
-void setup() {
-  Serial.begin(baudRate);
-  delay(5000);
-  inicializa();
+void setup()
+{
+  initialize();
+  initializeEthernet();
+}
 
-  //Tentativa de estabelecer conexão ethernet baseado em DHCP
-  digitalWrite(LED_BRANCO, HIGH);
-  if (Ethernet.begin(mac) == 0) {
-    Serial.println("Conexão DHCP não pode ser estabelecida, Tente 'endereço de IP fixo'");
-    Ethernet.begin(mac, ip); //se nenhum endereço DHCP encontrado, utilize 192.168.1.177
-  }
+void loop()
+{
+  readTemp();
+  sendTemp(temperatura, umidade);
+}
+
+// *********************************************
+
+void initialize()
+{
+  Serial.begin(9600);
+  pinMode(LED_BLUE, OUTPUT);
+  pinMode(LED_RED, OUTPUT);
+
   dht.begin();
+
+  // SET 4-DIGITS DISPLAY
+  display.setBrightness(1);
+  display.setSegments(data);
+
+  // INIT BLACKLIGHT
+  lcd.init();
+  lcd.setBacklight(HIGH);
+}
+
+void initializeEthernet()
+{
+  byte mac[] = {0x00, 0xAA, 0xBB, 0xCC, 0xDE, 0x02}; // mac da shield ethernet
+  byte ip[] = {192, 168, 0, 34};                     // ip do shield
+
+  alerts("Conectando de ", "192.168.0.34");
   delay(1000);
-  TesteDeConexao();
-}
 
-void loop() {
-  delay(2000);
-  LeTemperatura();
-  ativaLed();
-  Serial.println("HTTP-POST and REST Service");
-  PostRestService();
-  Serial.println("Execução concluida");
-  Serial.println("----------------------");
-  delay(10000);
-}
-
-// ---------------------------------------------------------------
-//INICIALIZA OS COMPONENTES
-void inicializa() {
-  pinMode(LED_VERMELHO, OUTPUT);
-  pinMode(LED_AMARELO, OUTPUT);
-  pinMode(LED_AZUL, OUTPUT);
-  pinMode(LED_VERDE, OUTPUT);
-  pinMode(LED_BRANCO, OUTPUT);
-  digitalWrite(LED_VERMELHO, LOW);
-  digitalWrite(LED_AMARELO, LOW);
-  digitalWrite(LED_AZUL, LOW);
-}
-// ---------------------------------------------------------------
-
-// ---------------------------------------------------------------
-//CONEXOES CLIENT - SERVER
-//Testa a conexão com o servidor
-void TesteDeConexao() {
-  Serial.println("Seu endereço de IP:");
-  Serial.println(Ethernet.localIP());
-  delay(2000);
-
-  Serial.println("Testando conexão com servidor:");
-  if (client.connect(serverIp, serverPort)) {
-    digitalWrite(LED_BRANCO, LOW);
-    Serial.println("Conectado ao servidor. fechando conexão");
-    client.stop();
-    Serial.println("conexão encerrada");
-  }
-  else {
-    Serial.println("Erro: Não foi possível se conectar ao servidor...");
-    Serial.println("------------------------------------");
-    Serial.println();
-  }
-}
-
-//Realiza um post na API
-void PostRestService() {
-  if (client.connect(serverIp, 3000))
+  Ethernet.begin(mac, ip);
+  if (Ethernet.hardwareStatus() == EthernetNoHardware)
   {
-    Serial.println("Conectado ao servidor.");
-    String PostData = "{\"temperatura\":";
-    PostData += temperatura;
-    PostData += ", \"umidade\":";
-    PostData += umidade;
-    PostData += "}";
-    Serial.println(PostData);
+    alerts("ERROR", "COD 02"); // Placa ethernet não foi encontrada.
+    while (Ethernet.hardwareStatus() == EthernetNoHardware)
+    {
+      delay(100);
+    }
+  }
 
-    if (client.connected()) {
-      Serial.println("connected");
-      client.println("POST http://localhost:3000/api/temperatura HTTP/1.1");
+  if (Ethernet.linkStatus() == LinkOFF)
+  {
+    alerts("ERROR", "COD 03"); // LINK DESLIGADO
+    while (Ethernet.linkStatus() == LinkOFF)
+    {
+      delay(100);
+    }
+  }
+  if (!client.connect(serverIp, serverPort))
+  {
+    while (!client.connect(serverIp, serverPort))
+    { // enquanto não estiver conectado ao endereço do servidor,...
+      alerts("Tentando", "novamente...");
+      delay(500);
+      lcd.clear();
+      alerts("ERROR", "COD 04"); // FALHA NA CONEXÃO COM A API
+    }
+    alerts("Conectado!", "Conexão restaurada!");
+    delay(5000);
+    lcd.clear();
+  }
+
+  alerts("Conexao", "OK!");
+  delay(500);
+  clearBlacklight();
+}
+
+// *********************************************
+
+void readTemp()
+{
+  temperatura = dht.readTemperature();
+  umidade = dht.readHumidity();
+  display.showNumberDec(temperatura, false, 2, 0);
+  display.setSegments(celsius, 2, 2);
+
+  lcd.setCursor(0, 0);
+  lcd.print("Temperatura");
+  lcd.setCursor(0, 1);
+  lcd.print(temperatura);
+
+  writeLed(temperatura);
+  delay(1000);
+}
+
+void sendTemp(float temperatura, float umidade)
+{
+  delay(100);
+  if (client.connect(serverIp, serverPort))
+  {
+    if (client.connected())
+    {
+      alerts("Salvando...", "Aguarde...");
+      delay(2000);
+      clearBlacklight();
+      String postData = preparePostData(temperatura, umidade);
+      client.println("POST http://localhost:3000/temperatura HTTP/1.1");
       client.println("Host: localhost:3000");
       client.println("Host: localhost:3000");
-      client.println("Content-Type: application/json"); // Pode enviar conteúdo como JSON, então ASP.net MVC WebAPI negócio corretamente com ele
+      client.println("Content-type: application/json");
       client.println("User-Agent: Arduino/1.0");
       client.println("Connection: close");
       client.print("Content-Length: ");
-      client.println(PostData.length());
+      client.println(postData.length());
       client.println();
-      client.println(PostData);
-      
-      digitalWrite(LED_VERDE, HIGH);
-      while (!client.available()) {}
-      Serial.print("======> Client disponível:");
-      Serial.println(client.available());
-      Serial.print("======> Client conectado:");
-      Serial.println(client.connected());
-      
-      if (client.available()) {
-        digitalWrite(LED_VERDE, LOW);
-        char c = client.read();
-        
-        Serial.println(c);
-      }
-      if (!client.connected()) {
-        Serial.println();
-        Serial.println("disconnecting.");
-        Serial.println("=======================");
-        client.stop();
-      }
-    } else {
-      Serial.println("connection failed");
+      client.println(postData);
     }
-  }
-  else
-  {
-    Serial.println("Não foi possível conectar ao servidor!");
+    else 
+    {
+      alerts("Nao conectado", "=(");
+    }
+    delay(2000);
+    clearBlacklight();
   }
 }
-// ---------------------------------------------------------------
 
-// ---------------------------------------------------------------
-//sensor de temperatura
-void LeTemperatura() {
-  // A leitura da temperatura e umidade pode levar 250ms!
-  // O atraso do sensor pode chegar a 2 segundos.
-  umidade = dht.readHumidity();
-  temperatura = dht.readTemperature();
-  // testa se retorno é valido, caso contrário algo está errado.
-  if (isnan(temperatura) || isnan(umidade))
-  {
-    Serial.println("Failed to read from DHT");
-  }
-  else
-  {
-    Serial.print("Umidade: ");
-    Serial.print(umidade);
-    Serial.print(" %t");
-    Serial.print("Temperatura: ");
-    Serial.print(temperatura);
-    Serial.println(" *C");
-  }
-}
-// ---------------------------------------------------------------
+// **************************************************
 
-// ---------------------------------------------------------------
-//LED
-void ativaLed() {
-  if (temperatura >= 0 && temperatura <= 18) {
-    digitalWrite(LED_VERMELHO, LOW);
-    digitalWrite(LED_AMARELO, LOW);
-    digitalWrite(LED_AZUL, HIGH);
-  }
-  else if (temperatura > 18 && temperatura <= 25) {
-    digitalWrite(LED_VERMELHO, LOW);
-    digitalWrite(LED_AMARELO, HIGH);
-    digitalWrite(LED_AZUL, LOW);
-  }
-  else {
-    digitalWrite(LED_VERMELHO, HIGH);
-    digitalWrite(LED_AMARELO, LOW);
-    digitalWrite(LED_AZUL, LOW);
-  }
+void alerts(String l1, String l2)
+{
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print(l1);
+  lcd.setCursor(0, 1);
+  lcd.print(l2);
 }
-// ---------------------------------------------------------------
+
+void clearBlacklight()
+{
+  lcd.clear();
+}
+
+void writeLed(float temperatura)
+{
+  if (temperatura >= 0 && temperatura <= 25)
+  {
+    digitalWrite(LED_BLUE, 1);
+    digitalWrite(LED_RED, 0);
+  }
+  digitalWrite(LED_BLUE, 0);
+  digitalWrite(LED_RED, 1);
+}
+
+String preparePostData(float temperatura, float umidade)
+{
+  String data = "{\"temperatura\":";
+  data += temperatura;
+  data += ", \"umidade\":";
+  data += umidade;
+  data += "}";
+  return data;
+}
