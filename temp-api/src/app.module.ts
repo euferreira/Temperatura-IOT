@@ -19,10 +19,12 @@ import {SequelizeModule} from "@nestjs/sequelize";
             synchronize: true,
             timezone: '-03:00',
         }),
-        TemperaturaModule
+        TemperaturaModule,
     ],
     controllers: [AppController],
-    providers: [AppService],
+    providers: [
+        AppService
+    ],
 })
 export class AppModule {
 }

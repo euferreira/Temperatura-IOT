@@ -15,3 +15,23 @@ export class TemperaturaService {
         return this.temperaturaModel.create(body);
     }
 }
+
+export interface Temperaturas {
+    temperatura( body: Temperatura): Promise<Temperatura>;
+    umidade( body: Temperatura): Promise<Temperatura>;
+}
+
+@Injectable()
+export class Teste implements Temperaturas {
+    temperatura( body: Temperatura): Promise<Temperatura> {
+        return new Promise(resolve => {
+            resolve(body);
+        });
+    }
+
+    umidade( body: Temperatura): Promise<Temperatura> {
+        return new Promise(resolve => {
+            resolve(body);
+        });
+    }
+}
