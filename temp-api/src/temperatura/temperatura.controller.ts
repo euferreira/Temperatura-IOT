@@ -15,9 +15,7 @@ export class TemperaturaController {
 
   @Get("last/:limit")
   async getLastsTemperaturas(@Param() params: any): Promise<Temperatura[]> {
-    console.log("Executou o get last")
     if (params) {
-      console.log("Executou o get last com params")
       return this.temperaturaService.getLastsTemperatura(Number(params.limit));
     }
     return this.temperaturaService.getLastsTemperatura(10);
