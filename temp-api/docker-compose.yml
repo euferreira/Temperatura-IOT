@@ -1,0 +1,43 @@
+version: '3'
+
+services:
+  db:
+    container_name: db_mysql
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: emb159753
+      MYSQL_DATABASE: temperatura_iot
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - my-network
+
+  app:
+    container_name: temperatura_iot_api
+    build: .
+    entrypoint: ./.docker/entrypoint.sh
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/home/node/app
+    environment:
+      DB_USER: root
+      DB_PASS: emb159753
+      DB_NAME: temperatura_iot
+      DB_HOST: db
+      DB_PORT: 3306
+    depends_on:
+      - db
+    networks:
+      - my-network
+
+volumes:
+  mysql_data:
+
+networks:
+  my-network:
+

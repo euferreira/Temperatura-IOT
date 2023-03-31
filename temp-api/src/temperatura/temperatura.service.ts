@@ -1,37 +1,28 @@
-import {Temperatura} from "./temperatura.entity";
-import {Injectable} from "@nestjs/common";
-import {InjectModel} from "@nestjs/sequelize";
+import { Temperatura } from "./temperatura.entity";
+import { Injectable } from "@nestjs/common";
+import { InjectModel } from "@nestjs/sequelize";
 
 @Injectable()
 export class TemperaturaService {
-    constructor(@InjectModel(Temperatura) private readonly temperaturaModel: typeof Temperatura) {
-    }
+  constructor(@InjectModel(Temperatura) private readonly temperaturaModel: typeof Temperatura) {
+  }
 
-    async getTemperatura(): Promise<Temperatura[]> {
-        return this.temperaturaModel.findAll();
-    }
+  async getTemperatura(): Promise<Temperatura[]> {
+    return this.temperaturaModel.findAll();
+  }
 
-    async createTemperatura(body: Temperatura): Promise<Temperatura> {
-        return this.temperaturaModel.create(body);
-    }
-}
+  async createTemperatura(body: Temperatura): Promise<Temperatura> {
+    return this.temperaturaModel.create({
+      temperatura: body.temperatura,
+      umidade: body.umidade,
+    });
+  }
 
-export interface Temperaturas {
-    temperatura( body: Temperatura): Promise<Temperatura>;
-    umidade( body: Temperatura): Promise<Temperatura>;
-}
+  async getLastTemperatura(): Promise<Temperatura> {
+    return this.temperaturaModel.findOne({order: [["id", "DESC"]]});
+  }
 
-@Injectable()
-export class Teste implements Temperaturas {
-    temperatura( body: Temperatura): Promise<Temperatura> {
-        return new Promise(resolve => {
-            resolve(body);
-        });
-    }
-
-    umidade( body: Temperatura): Promise<Temperatura> {
-        return new Promise(resolve => {
-            resolve(body);
-        });
-    }
+  async getLastsTemperatura(limit: number): Promise<Temperatura[]> {
+    return this.temperaturaModel.findAll({order: [["id", "DESC"]], limit: limit});
+  }
 }
